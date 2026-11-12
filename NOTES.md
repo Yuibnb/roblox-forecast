@@ -51,7 +51,16 @@ final history's hourly recorder reads carry them.
    Verified with a synthetic test: a game ageing out 24 h into the window
    kept ~1/3 of its mass, a game ageing out at the window start went to 0,
    and the top 10 re-ordered accordingly.
-4. **Output.** All rows with p ≥ 0.001 are named; each place's rows sum to
+4. **Per-origin normalisation (revision, 2026-11-12).** Each origin
+   snapshot's recency weight is divided by its number of future reads, so
+   every origin contributes equal total weight instead of early origins
+   (with many future reads) dominating the profiles. Tested 8 variants on
+   practice + 2 CV sets: this was the only one better on all three
+   (practice −37.58 → −37.11, CV6-11 −34.65 → −34.53, CV12-21 −37.40 →
+   −37.34 in the harness). Rejected: lag-decay (practice better, both CV
+   worse), bucket-smoothing (practice −36.61 but both CV much worse —
+   overfit), recency-72h, growth-36h, shift 0.35/0.65 (noise).
+5. **Output.** All rows with p ≥ 0.001 are named; each place's rows sum to
    ≤ 1 (rescaled if ever above); `top10` = the 10 games with the highest
    P(in top 10), ties broken by current rank then universe id.
 
@@ -86,6 +95,9 @@ so this is priced in.
   → 940 rows, 53,737 bytes, place sums 0.86–0.97, ≤97 rows/place, runtime
   0.17 s; two runs byte-identical (deterministic).
 - The shipped file scores **−37.58 / 6.4 hits / 52.9 agreement** on practice.
+- **Revision (2026-11-12, per-origin normalisation): −37.16 / 6.4 hits /
+  52.7 agreement** on practice; output 852 rows, 48,749 bytes, place sums
+  0.84–0.97, ≤97 rows/place; two runs byte-identical.
 - Age-out path verified with synthetic `details` (see above).
 
 ## What remains (for the parent agent)

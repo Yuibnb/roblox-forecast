@@ -7,6 +7,9 @@ Method (validated on the practice instance, see NOTES.md):
     game's rank at the origin (ranks 1..10 individually, then bands 11-20,
     21-50, 51+). Origins are recency-weighted (half-life 96 h) and the
     profiles are smoothed across neighbouring places (3-point moving average).
+  * Each origin snapshot contributes equal total weight: its recency weight is
+    divided by how many future reads it has, so early origins (with many
+    future reads) do not dominate the profiles.
   * Growth adjustment: a game's 48 h log playing-growth, percentile-ranked
     against the other games on the chart, shifts its profile up/down by up to
     0.5 places (fast growers climb, slow growers sink). Playing growth leads
@@ -76,7 +79,7 @@ def build_profiles(snaps, times):
         if not fut:
             continue
         age_h = (last_t - t0).total_seconds() / 3600.0
-        w = 0.5 ** (age_h / RECENCY_HALF_LIFE_H)
+        w = 0.5 ** (age_h / RECENCY_HALF_LIFE_H) / len(fut)
         origin = chart_map(snaps[i])
         fut_maps = [chart_map(snaps[j]) for j in fut]
         for uid, (r, _p) in origin.items():
