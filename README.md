@@ -1,46 +1,38 @@
-# Roblox Up-and-Coming Forecast
+# Roblox Up-and-Coming top-10 forecaster — V2
 
-Entry for make.fun `roblox-up-and-coming-forecast-01`: forecast the Roblox
-Up-and-Coming chart's top 10 over the 72 hours after the deadline, as
-per-place probabilities plus a `top10` ordering.
+Entry for make.fun `roblox-up-and-coming-forecast-01` ($500 in USDC).
+Resubmission replacing the V1 entry (Adept Cipher, server score -36.10).
 
-## Run
+## Method
+
+Rank-diffusion forecast blended with a horizon- and age-binned empirical
+transition kernel, averaged hour by hour over the 72 h window. Per place,
+the best 30 candidates are named and rescaled to 0.75, leaving a 0.25
+unnamed reserve for games entering the chart mid-window. Games age out
+28 days after creation when the history carries a `created` date.
+
+See `NOTES.md` for the full method, the evidence, and the validation.
+
+## Validation (local scorer, exact RULES rule)
+
+| | practice log score | hits | agreement |
+|---|---:|---:|---:|
+| V1 (shipped) | -37.16 | 6.40 | 52.7 |
+| **V2 (this entry)** | **-35.12** | 7.30 | 62.2 |
+| house baseline | -43.51 | 6.40 | 53.5 |
+
+Cross-validation: V2 beats V1 on log score on both origin sets
+(12-21: -37.62 vs -38.31; 6-11: -35.12 vs -35.87).
+
+## Run it
 
 ```sh
-MAKEFUN_INPUT_DIR=<kit input dir> MAKEFUN_OUTPUT_DIR=<out dir> python3 main.py
+MAKEFUN_INPUT_DIR=<kit>/input MAKEFUN_OUTPUT_DIR=out python3 main.py
 ```
 
-`main.py` is stdlib-only, deterministic, offline, and runs in under a second
-on the practice history. It reads `task.json` + `history.ndjson` from the
-input dir and writes `forecast.json` to the output dir.
+Python 3.13, standard library only, no network, deterministic
+(two runs byte-identical).
 
-## Method (one paragraph)
+## License
 
-The chart is very persistent at 6-hour horizons (top-10 overlap ~9/10 between
-reads) but drifts a lot over 72 hours, so a static "last chart" forecast is
-badly miscalibrated. Instead, for every past snapshot we measure where each
-game ranked in the reads of the following 72 hours, pooled by the game's rank
-at that snapshot (ranks 1–10 individually, then bands 11–20, 21–50, 51+),
-recency-weighted (96 h half-life) and smoothed across neighbouring places.
-That profile is the forecast's backbone. Two refinements: a game's 48 h log
-playing-growth — which leads rank by ~24 h (corr −0.25) while rank momentum
-itself does not predict — shifts its profile up/down by up to 0.5 places; and
-a game whose `created` date (from the latest `details`) puts its 28-day
-age-out inside the window has its probabilities scaled by the eligible
-fraction of the window, with the freed mass redistributed within each place.
-
-## Validation
-
-Scored with the competition's exact log-score rule on the sealed practice
-instance (history to 2026-11-07T23:00Z, 10 answer reads to 2026-11-10T23:00Z;
-the answer reads were re-extracted from the public Kenny-Dhub archive and
-checked against the rules' own hints — #1 counts match exactly):
-
-| forecast | practice log score | hits | agreement |
-|---|---:|---:|---:|
-| house baseline (persistence) | −43.51 | 6.4 | 53.5 |
-| **this entry** | **−37.58** | 6.4 | 52.9 |
-
-Cross-validated on 16 earlier origins (profiles built from strictly earlier
-snapshots only): this entry −34.6 / −37.4 vs baseline −48.1 / −48.7 — the
-improvement is consistent, not one lucky window. Full detail in `NOTES.md`.
+MIT — see `LICENSE`.
