@@ -1,38 +1,20 @@
-# Roblox Up-and-Coming top-10 forecaster — V2
+# Roblox Up-and-Coming top-10 forecaster — V3
 
 Entry for make.fun `roblox-up-and-coming-forecast-01` ($500 in USDC).
-Resubmission replacing the V1 entry (Adept Cipher, server score -36.10).
+Resubmission replacing the V2 entry (Lucid Locus, submission
+`01a1d23a-d320-7142-af33-93a98a0f7ddf`, practice -35.12).
 
-## Method
+V3 is V2 with one change: finer empirical-kernel bins (chart-age split into
+0-24 h / 1-3 d / 3-7 d / 7 d+ instead of one binary split at 72 h, and
+horizon split into 1-3 / 4-9 / 10-18 / 19-36 / 37-60 / 61-72 h instead of
+1-6 / 7-18 / ...). Everything else (velocity, diffusion, blend, temperature,
+named/reserve split) is unchanged.
 
-Rank-diffusion forecast blended with a horizon- and age-binned empirical
-transition kernel, averaged hour by hour over the 72 h window. Per place,
-the best 30 candidates are named and rescaled to 0.75, leaving a 0.25
-unnamed reserve for games entering the chart mid-window. Games age out
-28 days after creation when the history carries a `created` date.
+Validation (local scorer, exact competition rule):
+practice -34.9854 (hits 7.30, agreement 60.9) vs V2 -35.1201; CV origins
+12-21: -37.6047 vs -37.6227; CV origins 6-11: -35.1169 vs -35.1214; CV
+origins 22-33: -35.8389 vs -35.8744. V3 beats V2 on log score in all four
+evaluations; margins are small (+0.005 to +0.135) but consistent in sign.
 
-See `NOTES.md` for the full method, the evidence, and the validation.
-
-## Validation (local scorer, exact RULES rule)
-
-| | practice log score | hits | agreement |
-|---|---:|---:|---:|
-| V1 (shipped) | -37.16 | 6.40 | 52.7 |
-| **V2 (this entry)** | **-35.12** | 7.30 | 62.2 |
-| house baseline | -43.51 | 6.40 | 53.5 |
-
-Cross-validation: V2 beats V1 on log score on both origin sets
-(12-21: -37.62 vs -38.31; 6-11: -35.12 vs -35.87).
-
-## Run it
-
-```sh
-MAKEFUN_INPUT_DIR=<kit>/input MAKEFUN_OUTPUT_DIR=out python3 main.py
-```
-
-Python 3.13, standard library only, no network, deterministic
-(two runs byte-identical).
-
-## License
-
-MIT — see `LICENSE`.
+Run: `MAKEFUN_INPUT_DIR=<kit>/input MAKEFUN_OUTPUT_DIR=<out> python3 main.py`
+— stdlib only, deterministic (two runs byte-identical), no network.

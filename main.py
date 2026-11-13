@@ -1,53 +1,36 @@
 #!/usr/bin/env python3
-"""Roblox Up-and-Coming top-10 forecaster v2 (make.fun roblox-up-and-coming-forecast-01).
+"""Roblox Up-and-Coming top-10 forecaster v3 (make.fun roblox-up-and-coming-forecast-01).
 
-Method (validated on the practice instance + 2 cross-validation origin sets,
-see NOTES.md): a rank-diffusion forecast blended with an empirical
-transition kernel, averaged hour by hour over the scored window.
-
-  * Drift: each game keeps its last rank and drifts with an exponentially
-    weighted recent velocity (last 4 rank steps, 24 h half-life, clamped to
-    2.5 ranks/hour). The drift saturates over a 6 h timescale, so a climber
-    keeps climbing briefly, then the pull of the chart takes over.
-  * Diffusion: the rank spreads as a Normal whose width is fitted from the
-    history itself (median |rank change| / sqrt(gap hours), scaled to a
-    Normal standard deviation, clamped to [0.25, 1.0] ranks/sqrt(hour),
-    capped at 14 ranks). A median-based width stays sharp where the chart
-    is predictable and lets the kernel carry the fat tail.
-  * Empirical kernel: for every pair of reads up to 72 h apart, where a
-    game starting in a rank bucket ended up, split by forecast horizon
-    (1-6, 7-18, 19-36, 37-60, 61-72 h) and by chart age (first seen under
-    72 h ago vs older). The kernel captures what one Normal cannot:
-    rank-dependent drift (top games fall back, deep games climb),
-    rank-dependent spread, the fat tail of viral climbs, and the newcomer
-    boost (fresh games reach the top 10 far more often). Thin bins fall
-    back to coarser ones (other age, then age-merged) and need >= 30 pairs.
-  * Hourly averaging: the per-place probabilities are the mean over each
-    hour of the window, so early hours stay close to the current chart and
-    later hours spread honestly. Blend: 65% Normal diffusion, 35% kernel.
-  * Calibration: the hourly averages are sharpened with temperature 1.15,
-    then each place names its best candidates (average p > 0.003, at most
-    30), rescaled to sum to exactly 0.75 -- the remaining 0.25 is the
-    unnamed reserve for games climbing in from below or joining the chart
-    mid-window (8 of 100 top-10 slots in the practice window were games
-    not on the chart at all, invisible in every chart we can read).
-  * Age-out: a game leaves the chart 28 days after creation. When the
-    history carries a `created` date, the game's hourly loop stops at its
-    expiry, so its average dilutes over the full window.
-  * top10: the 10 games with the highest total P(in top 10), ties broken
-    by current rank, then universe id.
+V3 = V2 with finer empirical-kernel bins (the single change that improved
+practice AND every cross-validation set; see NOTES.md):
+  * chart-age bins: 0-24 h, 1-3 d, 3-7 d, 7 d+ (V2 used one binary split
+    at 72 h). Fresh games behave differently at 12 h old than at 60 h old,
+    and the finer split lets the kernel price that without memorizing the
+    practice window (each bin still needs >= 30 pairs, with fallback to
+    other ages, then age-merged).
+  * horizon bins: 1-3, 4-9, 10-18, 19-36, 37-60, 61-72 h (V2 merged 1-6 h).
+    Early hours matter most for the first answer reads, and the split at
+    3 h separates the immediate-churn regime from the rest.
+Everything else is V2 exactly: EWMA velocity (last 4 steps, 24 h half-life,
+clamp 2.5 ranks/h, 6 h saturation), Normal diffusion (median |rank change| /
+sqrt(gap), clamp [0.25, 1.0], cap 14), blend 65% Normal / 35% kernel,
+hourly averaging over the window, temperature 1.15, top 30 candidates per
+place above 0.003 rescaled to 0.75 named (0.25 unnamed reserve), 28-day
+age-out, top10 by total P(in top 10).
 
 Validation (local scorer, exact RULES rule; practice answer = 10 archive
 reads Nov 8-10, origin = last kit read Nov 7 20:53Z):
-  * V2 practice: log score -35.120100, hits 7.30, agreement 62.2
-    (V1 shipped entry: -37.16 / 6.40 / 52.7; house baseline: -43.51).
-  * Cross-validation, origins 12-21: V2 -37.62 vs V1 -38.31.
-  * Cross-validation, origins 6-11: V2 -35.12 vs V1 -35.87.
-  V2 beats V1 on log score in all three evaluations. The public
-  leaderboard's -13.2 cluster equals the oracle score (distribution fitted
-  on the answer reads themselves, which include a game not on the chart at
-  all), so it is in-sample and not a legitimate target; -35.1 is the
-  honest out-of-sample level of this method.
+  * V3 practice: log score -34.9854, hits 7.30, agreement 60.9
+    (V2 shipped entry: -35.1201 / 7.30 / 62.2; house baseline: -43.51).
+  * Cross-validation, origins 12-21: V3 -37.6047 vs V2 -37.6227.
+  * Cross-validation, origins 6-11: V3 -35.1169 vs V2 -35.1214.
+  * Cross-validation, origins 22-33: V3 -35.8389 vs V2 -35.8744.
+  V3 beats V2 on log score in all four evaluations (margins are small,
+  +0.005 to +0.135, but consistent in sign). The public leaderboard's
+  -13.2 cluster equals the oracle score (distribution fitted on the answer
+  reads themselves, which include a game not on the chart at all), so it
+  is in-sample and not a legitimate target; -35.0 is the honest
+  out-of-sample level of this method.
 
 Stdlib only, deterministic, no network, no wall clock: every timestamp
 comes from the input files. Reads $MAKEFUN_INPUT_DIR (default /input) and
@@ -62,7 +45,6 @@ from datetime import datetime, timedelta
 ALPHA = 0.35          # empirical-kernel blend weight (Normal gets 1-ALPHA)
 TEMP = 1.15           # temperature on the hourly averages (>1 sharpens)
 NAMED = 0.75          # probability mass named per place (rest is unnamed)
-AGE_CUT = 72.0        # hours: fresh vs old chart age in the kernel
 SIGMA_MAX = 1.0       # clamp on the fitted diffusion width
 SIGMA_MIN = 0.25
 SPREAD_CAP = 14.0     # cap on the Normal spread, in ranks
@@ -75,7 +57,9 @@ MIN_PAIRS = 30        # pairs needed before a kernel bin is trusted
 MAX_AGE_DAYS = 28     # games leave the chart this long after creation
 
 RANK_BUCKETS = [(1, 10), (11, 20), (21, 50), (51, 1000000)]
-HOUR_BUCKETS = [(1, 6), (7, 18), (19, 36), (37, 60), (61, 72)]
+# V3: finer horizon split (1-3 h separated from 4-9 h).
+HOUR_BUCKETS = [(1, 3), (4, 9), (10, 18), (19, 36), (37, 60), (61, 72)]
+N_AGE_BINS = 4        # V3: 0-24 h, 1-3 d, 3-7 d, 7 d+ (V2: binary at 72 h)
 
 
 def parse_ts(s):
@@ -112,6 +96,17 @@ def hour_bucket(hour):
         if low <= hour <= high:
             return index
     return len(HOUR_BUCKETS) - 1
+
+
+def age_bucket(age_hours):
+    """V3 chart-age bin: 0 = 0-24 h, 1 = 1-3 d, 2 = 3-7 d, 3 = 7 d+."""
+    if age_hours < 24:
+        return 0
+    if age_hours < 72:
+        return 1
+    if age_hours < 168:
+        return 2
+    return 3
 
 
 def main():
@@ -180,21 +175,25 @@ def main():
                 if rank1 is None:
                     continue
                 age = (start - first_seen[uid]).total_seconds() / 3600.0
-                ab = 0 if age < AGE_CUT else 1
+                ab = age_bucket(age)
                 key = (rank_bucket(rank1), hb, ab)
                 totals[key] = totals.get(key, 0) + 1
                 if rank2 <= places:
                     counts.setdefault(key, [0] * places)[rank2 - 1] += 1
 
     def kernel_dist(rb, hb, ab):
-        """P(place) for a bin, falling back to coarser bins when thin."""
-        for key in ((rb, hb, ab), (rb, hb, 1 - ab)):
+        """P(place) for a bin, falling back to coarser bins when thin.
+        Order: the game's own age bin, then the other age bins (newest
+        first is not assumed -- any bin with enough pairs will do), then
+        all ages merged. Every step still needs >= MIN_PAIRS."""
+        for other_age in [ab] + [a for a in range(N_AGE_BINS) if a != ab]:
+            key = (rb, hb, other_age)
             if totals.get(key, 0) >= MIN_PAIRS:
                 total = totals[key]
                 return [c / total for c in counts.get(key, [0] * places)]
         merged = [0] * places
         total = 0
-        for other_age in (0, 1):
+        for other_age in range(N_AGE_BINS):
             key = (rb, hb, other_age)
             if key in totals:
                 for p in range(places):
@@ -243,7 +242,7 @@ def main():
         expiry = born + timedelta(days=MAX_AGE_DAYS) if born else None
         rb = rank_bucket(rank0)
         age_now = (last_time - first_seen[uid]).total_seconds() / 3600.0
-        ab = 0 if age_now < AGE_CUT else 1
+        ab = age_bucket(age_now)
         sums = [0.0] * places
         for hour in range(1, slots + 1):
             # Past expiry every later hour is expired too: stop here, and
